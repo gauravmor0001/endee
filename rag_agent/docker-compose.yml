@@ -1,0 +1,17 @@
+services:
+  endee:
+    image: endeeio/endee-server:latest
+    container_name: endee-server
+    ports:
+      - "8080:8080"
+    environment:
+      NDD_NUM_THREADS: 0
+      NDD_AUTH_TOKEN: ""  # No auth for local testing
+    volumes:
+      - endee-data:/data
+    restart: unless-stopped
+
+
+volumes: #this helps the data to remain even if turn off computer(data dont get deleted)
+  endee-data:
+  

@@ -1,385 +1,88 @@
-# Endee: High-Performance Open Source Vector Database
+# Agentic RAG Chatbot - Internship Submission
 
-**Endee (nD)** is a specialized, high-performance vector database built for speed and efficiency. This guide covers supported platforms, dependency requirements, and detailed build instructions using both our automated installer and manual CMake configuration.
+**Submission by:** Gaurav
+**Directory:** All project files are neatly contained within the `/rag_agent` folder to preserve the core Endee repository structure.
 
-there are 3 ways to build and run endee:
-1. quick installation and run using install.sh and run.sh scripts
-2. manual build using cmake
-3. using docker
+## Project Overview
+This project is a agentic RAG (Retrieval-Augmented Generation) chatbot. It intelligently routes user queries, deciding whether to search uploaded documents using the **Endee Vector Database** or rely on its own parametric knowledge. It features full JWT user authentication, persistent chat histories, and dedicated long-term vector memory.
 
-also you can run endee using docker from docker hub without building it locally. refer to section 4 for more details.
+**Problem Statement:** Traditional LLMs lack private, domain-specific context, while standard RAG pipelines are often too rigid, blindly forcing database searches even when users ask casual or general questions. 
+**Solution:** This project introduces an Agentic RAG chatbot. By treating database retrieval as an optional "tool" rather than a mandatory step, the AI intelligently routes user queries. It autonomously decides whether to search uploaded documents or rely on its own parametric knowledge, resulting in faster, more natural, and highly accurate conversations.
+
+
+## How Endee is Used
+As the core intelligence engine for document retrieval, the **Endee Vector Database** is utilized in two critical stages of the pipeline:
+* **Dynamic Ingestion (`file_processor.py`):** When a user uploads a PDF, TXT, or DOCX, the backend chunks the document and generates embeddings using HuggingFace's `all-MiniLM-L6-v2`. These embeddings, along with their metadata (filename, user ID, raw text), are directly upserted into an Endee index (`endee_rag`) utilizing cosine similarity.
+* **Semantic Retrieval (`tools.py`):** The LangGraph agent is equipped with a `search_knowledge_base` tool. When triggered, this tool converts the agent's search query into a vector and performs a `top_k=3` semantic search against the Endee database, returning the most relevant document chunks to ground the LLM's final answer.
+
+## Architecture & Tech Stack
+* **Backend:** FastAPI (Python)
+* **Agent Framework:** LangGraph
+* **LLM Engine:** Groq (`llama-3.3-70b-versatile`)
+* **Primary RAG Database:** Endee (Dockerized)
+* **Agentic Memory:** Mem0 powered by ChromaDB (Serverless Local Vector DB)
+* **Relational Database:** SQLite (User Auth & Chat Threads)
+* **Frontend:** Vanilla HTML, CSS, JavaScript
+
+## Key Features
+* **Agentic Tool Calling:** The LangGraph agent decides when to trigger the `search_knowledge_base` tool versus answering directly.
+* **Multi-Tenant Security:** JWT-based authentication ensures users can only access their own documents and chat histories.
+* **Dual-Memory System:** SQLite handles exact UI chat histories, while ChromaDB handles semantic long-term memory for the agent.
+* **Dynamic Chunking:** Automatically processes, splits, and embeds PDFs, TXTs, and DOCXs into Endee.
 
 ---
 
-## System Requirements
+## How to Run Locally
 
-Before installing, ensure your system meets the following hardware and operating system requirements.
+Follow these steps to get the Agentic RAG Chatbot running on your local machine. Ensure you have **Docker**, **Python 3.10+**, and **Git** installed before starting.
 
-### Supported Operating Systems
+### 1. Clone the Repository
+Clone the repository to your local machine
 
-* **Linux**: Ubuntu(22.04, 24.04, 25.04) Debian(12, 13), Rocky(8, 9, 10), Centos(8, 9, 10), Fedora(40, 42, 43)
-* **macOS**: Apple Silicon (M Series) only.
+### 2.Install Dependencies
+Go to the backend folder and install the required Python packages:
 
-### Required Dependencies
+cd rag_agent/backend
+pip install -r requirements.txt
 
-The following packages are required for compilation.
+(Also create a .env file that contain JWT_SECRET_KEY , GROQ_API_KEY and HUGGINGFACEHUB_API_TOKEN)
 
- `clang-19`, `cmake`, `build-essential`, `libssl-dev`, `libcurl4-openssl-dev`
-
-> **Note:** The build system requires **Clang 19** (or a compatible recent Clang version) supporting C++20.
-
----
-
-## 1. Quick Installation (Recommended)
-
-The easiest way to build **ndd** is using the included `install.sh` script. This script handles OS detection, dependency checks, and configuration automatically.
-
-### Usage
-
-First, ensure the script is executable:
-```bash
-chmod +x ./install.sh
-```
-
-Run the script from the root of the repository. You **must** provide arguments for the build mode and/or CPU optimization.
-
-```bash
-./install.sh [BUILD_MODE] [CPU_OPTIMIZATION]
-```
-
-### Build Arguments
-
-You can combine one **Build Mode** and one **CPU Optimization** flag.
-
-#### Build Modes
-
-| Flag | Description | CMake Equivalent |
-| --- | --- | --- |
-| `--release` | **Default.** Optimized release build. |  |
-| `--debug_all` | Enables full debugging symbols. | `-DND_DEBUG=ON -DDEBUG=ON` |
-| `--debug_nd` | Enables NDD-specific logging/timing. | `-DND_DEBUG=ON` |
-
-#### CPU Optimization Options
-
-Select the flag matching your hardware to enable SIMD optimizations.
-
-| Flag | Description | Target Hardware |
-| --- | --- | --- |
-| `--avx2` | Enables AVX2 (FMA, F16C) | Modern x86_64 Intel/AMD |
-| `--avx512` | Enables AVX512 (F, BW, VNNI, FP16) | Server-grade x86_64 (Xeon/Epyc) |
-| `--neon` | Enables NEON (FP16, DotProd) | Apple Silicon / ARMv8.2+ |
-| `--sve2` | Enables SVE2 (INT8/16, FP16) | ARMv9 / SVE2 compatible |
-
-> **Note:** The `--avx512` build configuration enforces mandatory runtime checks for specific instruction sets. To successfully run this build, your CPU must support **`avx512` (Foundation), `avx512_fp16`, `avx512_vnni`, `avx512bw`, and `avx512_vpopcntdq`**; if any of these extensions are missing, the database will fail to initialize and exit immediately to avoid runtime crashes.
-
-
-### Example Commands
-
-**Build for Production (Intel/AMD with AVX2):**
-
-```bash
-./install.sh --release --avx2
-```
-
-**Example Build for Debugging (Apple Silicon):**
-
-```bash
-./install.sh --debug_all --neon
-```
-
-### Running the Server
-
-We provide a `run.sh` script to simplify running the server. It automatically detects the built binary and uses `ndd_data_dir=./data` by default.
-
-First, ensure the script is executable:
-
-```bash
-chmod +x ./run.sh
-```
-
-Then run the script:
-
-```bash
-./run.sh
-```
-
-This will automatically identify the latest binary and start the server.
-
-#### Options
-
-You can override the defaults using arguments:
-
-*   `ndd_data_dir=DIR`: Set the data directory.
-*   `binary_file=FILE`: Set the binary file to run.
-*   `ndd_auth_token=TOKEN`: Set the authentication token (leave empty/ignore to run without authentication).
-
-#### Examples
-
-**Run with custom data directory:**
-
-```bash
-./run.sh ndd_data_dir=./my_data
-```
-
-**Run specific binary:**
-
-```bash
-./run.sh binary_file=./build/ndd-avx2
-```
-
-**Run with authentication token:**
-
-```bash
-./run.sh ndd_auth_token=your_token
-```
-
-
-**Run with all options**
-
-```bash
-./run.sh ndd_data_dir=./my_data binary_file=./build/ndd-avx2 ndd_auth_token=your_token
-```
-
-**For Help**
-
-```bash
-./run.sh --help
-```
-
-
-## 2. Manual Build (Advanced)
-
-If you prefer to configure the build manually or integrate it into an existing install pipeline, you can use `cmake` directly.
-
-### Step 1: Prepare Build Directory
-
-```bash
-mkdir build && cd build
-```
-
-### Step 2: Configure
-
-Run `cmake` with the appropriate flags. You must manually define the compiler if it is not your system default.
-
-**Configuration Flags:**
-
-* **Debug Options:**
-* `-DDEBUG=ON` (Enable debug symbols/O0)
-* `-DND_DEBUG=ON` (Enable internal logging)
-
-
-* **SIMD Selectors (Choose One):**
-* `-DUSE_AVX2=ON`
-* `-DUSE_AVX512=ON`
-* `-DUSE_NEON=ON`
-* `-DUSE_SVE2=ON`
-
-
-**Example (x86_64 AVX512 Release):**
-
-```bash
-cmake -DCMAKE_BUILD_TYPE=Release \
-      -DUSE_AVX512=ON \
-      ..
-```
-
-### Step 3: Compile
-
-```bash
-make -j$(nproc)
-```
-
-### Running the Built Binary
-
-After a successful build, the binary will be generated in the `build/` directory.
-
-### Binary Naming
-
-The output binary name depends on the SIMD flag used during compilation:
-
-* `ndd-avx2`
-* `ndd-avx512`
-* `ndd-neon` (or `ndd-neon-darwin` for mac)
-* `ndd-sve2`
-
-A symlink called `ndd` links to the binary compiled for the current build.
-
-### Runtime Environment Variables
-
-Some environment variables **ndd** reads at runtime:
-
-* `NDD_DATA_DIR`: Defines the data directory
-* `NDD_AUTH_TOKEN`: Optional authentication token (see below)
-
-### Authentication
-
-**ndd** supports two authentication modes:
-
-**Open Mode (No Authentication)** - Default when `NDD_AUTH_TOKEN` is not set:
-```bash
-# All APIs work without authentication
-./build/ndd
-curl http://{{BASE_URL}}/api/v1/index/list
-```
-
-**Token Mode** - When `NDD_AUTH_TOKEN` is set:
-```bash
-# Generate a secure token
-export NDD_AUTH_TOKEN=$(openssl rand -hex 32)
-./build/ndd
-
-# All protected APIs require the token in Authorization header
-curl -H "Authorization: $NDD_AUTH_TOKEN" http://{{BASE_URL}}/api/v1/index/list
-```
-
-### Execution Example
-
-To run the database using the AVX2 binary and a local `data` folder:
-
-```bash
-# 1. Create the data directory
-mkdir -p ./data
-
-# 2. Export the environment variable and run
-export NDD_DATA_DIR=$(pwd)/data
-./build/ndd
-```
-
-Alternatively, as a single line:
-
-```bash
-NDD_DATA_DIR=./data ./build/ndd
-```
-
----
-
-
-
-## 3. Docker Deployment
-
-We provide a Dockerfile for easy containerization. This ensures a consistent runtime environment and simplifies the deployment process across various platforms.
-
-### Build the Image
-
-You **must** specify the target architecture (`avx2`, `avx512`, `neon`, `sve2`) using the `BUILD_ARCH` build argument. You can optionally enable a debug build using the `DEBUG` argument.
-
-```bash
-# Production Build (AVX2) (for x86_64 systems)
-docker build --ulimit nofile=100000:100000 --build-arg BUILD_ARCH=avx2 -t endee-oss:latest -f ./infra/Dockerfile .
-
-# Debug Build (Neon) (for arm64, mac apple silicon)
-docker build --ulimit nofile=100000:100000 --build-arg BUILD_ARCH=neon --build-arg DEBUG=true -t endee-oss:latest -f ./infra/Dockerfile .
-```
-
-### Run the Container
-
-The container exposes port `8080` and stores data in `/data` inside container. You should persist this data using a docker volume.
-
-```bash
-docker run \
-  -p 8080:8080 \
-  -v endee-data:/data \
-  -e NDD_AUTH_TOKEN="your_secure_token" \
-  --name endee-server \
-  endee-oss:latest
-```
-
-leave `NDD_AUTH_TOKEN` empty or remove it to run endee without authentication.
-
-### Alternatively: Docker Compose
-
-You can also use `docker-compose` to run the service.
-
-1. Start the container:
-   ```bash
-   docker-compose up
-   ```
-
----
-
-## 4. Running Docker container from registry
-
-You can run Endee directly using the pre-built image from Docker Hub without building locally.
-
-### Using Docker Compose
-
-Create a new directory for Endee:
-
-```bash
-mkdir endee && cd endee
-```
-
-Inside this directory, create a file named `docker-compose.yml` and copy the following content into it:
-
-```yaml
-services:
-  endee:
-    image: endeeio/endee-server:latest
-    container_name: endee-server
-    ports:
-      - "8080:8080"
-    environment:
-      NDD_NUM_THREADS: 0
-      NDD_AUTH_TOKEN: ""  # Optional: set for authentication
-    volumes:
-      - endee-data:/data
-    restart: unless-stopped
-
-volumes:
-  endee-data:
-```
-
-Then run:
-```bash
+### 3.Start the Endee Vector Database
+Ensure Docker Dekstop is running in background then go to rag_agent directory to run db by:
+cd..(if currently in backend)
 docker compose up -d
-```
 
-for more details visit [docs.endee.io](https://docs.endee.io/quick-start)
+### 4.Run the Backend server:
 
----
+cd backend
+python server.py
 
-## Contribution
+now your server is running at http://127.0.0.1:5000
 
-We welcome contributions from the community to help make vector search faster and more accessible for everyone. To contribute:
+### 5.Launch the Frontend UI
 
-* **Submit Pull Requests**: Have a fix or a new feature? Fork the repo, create a branch, and send a PR.
-* **Report Issues**: Found a bug or a performance bottleneck? Open an issue on GitHub with steps to reproduce it.
-* **Suggest Improvements**: We are always looking to optimize performance; feel free to suggest new CPU target optimizations or architectural enhancements.
-* **Feature Requests**: If there is a specific functionality you need, start a discussion in the issues section.
+Navigate to rag_agent/frontend/index.html.
+Right-click and select "Open with Live Server" to launch the chat interface in your browser.
 
----
+(Tip: Ensure your VS Code workspace ignores the local database files to prevent Live Server from automatically refreshing the page when the AI saves a message!)
 
-## License
 
-Endee is open source software licensed under the
-**Apache License 2.0**.
+### future work:
+->Expand the Agent's Toolbelt: if we want to convert it to a full functional chatbot we have to make tools that can allow llm to do web search.
+->Advanced RAG (Hybrid Search):Standard cosine similarity struggles with exact keyword matches (like finding a specific serial number). Upgrading the Endee query to use Hybrid Search.
+->Total Containerization: Right now, only endee is in Docker, we can write a docker file for frontend and backend too.
 
-You are free to use, modify, and distribute this software for
-personal, commercial, and production use.
+### Project Showcase:
 
-See the LICENSE file for full license terms.
+**1. login Page**
+![login](rag_agent/asset/login.png)
 
----
+**2. First Thing**
+![first](rag_agent/asset/firstthing.png)
 
-## Trademark and Branding
 
-“Endee” and the Endee logo are trademarks of Endee Labs.
+**3. Demo**
+![Demo](rag_agent/asset/Demo.png)
 
-The Apache License 2.0 does **not** grant permission to use the Endee name,
-logos, or branding in a way that suggests endorsement or affiliation.
 
-If you offer a hosted or managed service based on this software, you must:
-- Use your own branding
-- Avoid implying it is an official Endee service
 
-For trademark or branding permissions, contact: enterprise@endee.io
-
----
-
-## Third-Party Software
-
-This project includes or depends on third-party software components that are
-licensed under their respective open source licenses.
-
-Use of those components is governed by the terms and conditions of their
-individual licenses, not by the Apache License 2.0 for this project.
