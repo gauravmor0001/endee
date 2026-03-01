@@ -74,14 +74,14 @@ Right-click and select "Open with Live Server" to launch the chat interface in y
 
 ### Project Showcase:
 
-**1. login Page**
+**1. login Page(after registration then login with id password)**
 ![login](rag_agent/assest/login.png)
 
-**2. First Thing**
+**2. First glance**
 ![first](rag_agent/assest/firstthing.png)
 
 
-**3. Demo**
+**3. Demo(upload your document and ask question)**
 ![Demo](rag_agent/assest/Demo.png)
 
 
